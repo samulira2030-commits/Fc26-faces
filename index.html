@@ -695,14 +695,41 @@
   </div>
 </div>
 
-<script>
-  // ── DADOS ──────────────────────────────────────────────
-  // Faces de exemplo — substitua pelos seus
-  let faces = [];
+<script type="module">
+  // ── FIREBASE CONFIG ────────────────────────────────────
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, collection, addDoc, getDocs, orderBy, query } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-  let nextId = 4;
+  const firebaseConfig = {
+    apiKey: "AIzaSyBasFGhp_FjkQpTZ0gY4_uMSGAtdZ-RfnU",
+    authDomain: "facevault-fc26.firebaseapp.com",
+    projectId: "facevault-fc26",
+    storageBucket: "facevault-fc26.firebasestorage.app",
+    messagingSenderId: "237287465591",
+    appId: "1:237287465591:web:cdbb880677da8882625c72"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  let faces = [];
   let currentFilter = 'all';
   let currentSearch = '';
+
+  // ── LOAD FACES FROM FIRESTORE ──────────────────────────
+  async function loadFaces() {
+    const grid = document.getElementById('facesGrid');
+    grid.innerHTML = `<div class="empty-state"><p>Carregando...</p></div>`;
+    try {
+      const q = query(collection(db, "faces"), orderBy("createdAt", "desc"));
+      const snap = await getDocs(q);
+      faces = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch(e) {
+      faces = [];
+    }
+    renderGrid();
+    setTimeout(() => animateCount(document.getElementById('count-faces'), faces.length), 400);
+  }
 
   // ── RENDER ─────────────────────────────────────────────
   function renderGrid() {
@@ -738,7 +765,7 @@
             <div class="card-meta">${f.club}</div>
             <div class="card-desc">${f.desc}</div>
             <div class="card-footer">
-              <span class="card-downloads">⬇ ${f.downloads.toLocaleString()}</span>
+              <span class="card-downloads">⬇ ${(f.downloads||0).toLocaleString()}</span>
               <a class="btn-download" href="${f.link}" target="_blank">Download</a>
             </div>
           </div>
@@ -749,39 +776,37 @@
       html = `<div class="empty-state"><p>Nenhuma face encontrada.</p></div>`;
     }
 
-    // botão de adicionar
     html += `<div class="card-add" onclick="openModal()"><span class="plus">+</span>Adicionar Face</div>`;
-
     grid.innerHTML = html;
   }
 
   // ── FILTER / SEARCH ────────────────────────────────────
-  function filterCards(type, btn) {
+  window.filterCards = function(type, btn) {
     currentFilter = type;
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     renderGrid();
   }
 
-  function searchCards(val) {
+  window.searchCards = function(val) {
     currentSearch = val;
     renderGrid();
   }
 
   // ── MODAL ──────────────────────────────────────────────
-  function openModal() {
+  window.openModal = function() {
     document.getElementById('modalOverlay').classList.add('open');
   }
 
-  function closeModal() {
+  window.closeModal = function() {
     document.getElementById('modalOverlay').classList.remove('open');
   }
 
-  function closeModalOutside(e) {
+  window.closeModalOutside = function(e) {
     if (e.target === document.getElementById('modalOverlay')) closeModal();
   }
 
-  function addFace() {
+  window.addFace = async function() {
     const name = document.getElementById('inp-name').value.trim();
     const club = document.getElementById('inp-club').value.trim();
     const desc = document.getElementById('inp-desc').value.trim();
@@ -794,20 +819,37 @@
       return;
     }
 
-    faces.unshift({ id: nextId++, name, club: club || '—', desc: desc || 'Face HD para FC26.', img, badge, downloads: 0, link });
-    closeModal();
+    const btn = document.querySelector('.btn-submit');
+    btn.textContent = 'Salvando...';
+    btn.disabled = true;
 
-    // limpa form
-    ['inp-name','inp-club','inp-desc','inp-img','inp-link'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('inp-badge').value = '';
+    try {
+      await addDoc(collection(db, "faces"), {
+        name, 
+        club: club || '—', 
+        desc: desc || 'Face HD para FC26.', 
+        img, badge, 
+        link,
+        downloads: 0,
+        createdAt: Date.now()
+      });
 
-    renderGrid();
+      closeModal();
+      ['inp-name','inp-club','inp-desc','inp-img','inp-link'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('inp-badge').value = '';
+      await loadFaces();
+    } catch(e) {
+      alert('Erro ao salvar. Verifique as regras do Firestore.');
+    }
+
+    btn.textContent = 'Salvar Face';
+    btn.disabled = false;
   }
 
   // ── COUNTER ANIMATION ──────────────────────────────────
   function animateCount(el, target) {
     let n = 0;
-    const step = Math.ceil(target / 30);
+    const step = Math.ceil(target / 30) || 1;
     const t = setInterval(() => {
       n = Math.min(n + step, target);
       el.textContent = n;
@@ -816,8 +858,7 @@
   }
 
   // ── INIT ───────────────────────────────────────────────
-  renderGrid();
-  setTimeout(() => animateCount(document.getElementById('count-faces'), faces.length), 400);
+  loadFaces();
 </script>
 </body>
 </html>
